@@ -13,6 +13,7 @@ interface Category {
 interface User {
   _id: string;
   name: string;
+  role?: string;
 }
 
 interface Complaint {
@@ -27,6 +28,8 @@ interface Complaint {
   location?: string;
   createdAt: string;
   updatedAt?: string;
+   dueDate?: string;
+   escalated?: boolean;
 }
 
 interface StatusHistoryItem {
@@ -44,6 +47,13 @@ interface AttachmentItem {
   mimeType: string;
 }
 
+interface InternalNote {
+  _id?: string;
+  author?: User | string;
+  note: string;
+  createdAt: string;
+}
+
 export default function ComplaintDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -55,6 +65,11 @@ export default function ComplaintDetailPage() {
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [nextStatus, setNextStatus] = useState<string>("in_progress");
   const [remarks, setRemarks] = useState("");
+  const [notes, setNotes] = useState<InternalNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [staffUsers, setStaffUsers] = useState<User[]>([]);
+  const [selectedAssignee, setSelectedAssignee] = useState<string>("");
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     hydrateFromStorage();
@@ -72,14 +87,39 @@ export default function ComplaintDetailPage() {
       api.get<AttachmentItem[]>(`/api/files/complaint/${params.id}`, {
         headers,
       }),
+      api.get<InternalNote[]>(`/api/complaints/${params.id}/notes`, {
+        headers,
+      }),
     ])
-      .then(([c, h, a]) => {
+      .then(([c, h, a, n]) => {
         setComplaint(c.data);
         setHistory(h.data);
         setAttachments(a.data);
+        setNotes(n.data);
       })
       .finally(() => setLoading(false));
   }, [accessToken, params?.id]);
+
+  // Load staff list for admin assignment
+  useEffect(() => {
+    if (!accessToken || user?.role !== "admin") return;
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    api
+      .get<User[]>("/api/users", { headers })
+      .then((r) => setStaffUsers(r.data.filter((u) => u.role === "staff")))
+      .catch(() => {});
+  }, [accessToken, user?.role]);
+
+  // Keep selected assignee in sync with loaded complaint
+  useEffect(() => {
+    if (!complaint) return;
+    const current = complaint.assignedTo as User | string | undefined;
+    if (!current || typeof current === "string") {
+      setSelectedAssignee(current || "");
+    } else {
+      setSelectedAssignee(current._id);
+    }
+  }, [complaint]);
 
   const updateStatus = async () => {
     if (!accessToken || !complaint) return;
@@ -105,6 +145,48 @@ export default function ComplaintDetailPage() {
 
   const canManageStatus =
     user && (user.role === "staff" || user.role === "admin");
+
+  const canUseStaffTools = user && (user.role === "staff" || user.role === "admin");
+
+  const addNote = async () => {
+    if (!accessToken || !complaint || !newNote.trim()) return;
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const res = await api.post<InternalNote>(
+      `/api/complaints/${complaint._id}/notes`,
+      { note: newNote },
+      { headers },
+    );
+    setNotes((xs) => [res.data, ...xs]);
+    setNewNote("");
+  };
+
+  const escalate = async () => {
+    if (!accessToken || !complaint) return;
+    if (complaint.escalated) return;
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const res = await api.post<Complaint>(
+      `/api/complaints/${complaint._id}/escalate`,
+      {},
+      { headers },
+    );
+    setComplaint(res.data);
+  };
+
+  const assignToStaff = async () => {
+    if (!accessToken || !complaint || user?.role !== "admin") return;
+    setAssigning(true);
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    try {
+      const res = await api.put<Complaint>(
+        `/api/complaints/${complaint._id}/assign`,
+        { assignedTo: selectedAssignee || null },
+        { headers },
+      );
+      setComplaint(res.data);
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   if (loading || !complaint) {
     return (
@@ -161,6 +243,22 @@ export default function ComplaintDetailPage() {
               ).toLocaleString()}
             </div>
           </div>
+          {complaint.dueDate && (
+            <div>
+              <div className="text-[11px] text-slate-400">Due date</div>
+              <div className="text-slate-100">
+                {new Date(complaint.dueDate).toLocaleString()}
+              </div>
+            </div>
+          )}
+          {complaint.escalated && (
+            <div>
+              <div className="text-[11px] text-slate-400">Escalation</div>
+              <div className="text-ember text-[11px] font-semibold">
+                Escalated to admin
+              </div>
+            </div>
+          )}
           <div>
             <div className="text-[11px] text-slate-400">Requester</div>
             <div className="text-slate-100">
@@ -172,6 +270,30 @@ export default function ComplaintDetailPage() {
             <div className="text-slate-100">
               {(complaint.assignedTo as User)?.name || "Unassigned"}
             </div>
+            {user?.role === "admin" && (
+              <div className="mt-2 flex items-center gap-2 text-[11px]">
+                <select
+                  className="flex-1 bg-slate-950/80"
+                  value={selectedAssignee}
+                  onChange={(e) => setSelectedAssignee(e.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {staffUsers.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="secondary px-3 py-1"
+                  onClick={assignToStaff}
+                  disabled={assigning}
+                >
+                  {assigning ? "Assigning…" : "Assign"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -257,6 +379,57 @@ export default function ComplaintDetailPage() {
               onClick={updateStatus}
             >
               {statusUpdating ? "Updating…" : "Apply status change"}
+            </button>
+          </div>
+        )}
+        {canUseStaffTools && (
+          <div className="mt-6 space-y-3 text-xs">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Internal staff notes
+            </h3>
+            <textarea
+              rows={3}
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              placeholder="Add an internal note for staff/admin only…"
+            />
+            <button
+              type="button"
+              className="secondary w-full"
+              onClick={addNote}
+              disabled={!newNote.trim()}
+            >
+              Add note
+            </button>
+            <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+              {notes.map((n, idx) => (
+                <div
+                  key={n._id || idx}
+                  className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-1.5"
+                >
+                  <div className="text-[11px] text-slate-400">
+                    {new Date(n.createdAt).toLocaleString()}
+                  </div>
+                  <div className="text-slate-100">{n.note}</div>
+                </div>
+              ))}
+              {!notes.length && (
+                <div className="text-[11px] text-slate-500">
+                  No internal notes yet.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {user?.role === "staff" && (
+          <div className="mt-4 text-xs">
+            <button
+              type="button"
+              className="secondary w-full border-ember/60 text-ember hover:bg-ember/10"
+              onClick={escalate}
+              disabled={complaint.escalated}
+            >
+              {complaint.escalated ? "Already escalated" : "Escalate to admin"}
             </button>
           </div>
         )}

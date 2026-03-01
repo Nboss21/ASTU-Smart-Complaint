@@ -18,6 +18,8 @@ interface Complaint {
   category: Category | string;
   createdAt: string;
   updatedAt?: string;
+   dueDate?: string;
+   escalated?: boolean;
 }
 
 export default function ComplaintsPage() {

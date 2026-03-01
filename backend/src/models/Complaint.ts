@@ -16,6 +16,13 @@ export interface IComplaint extends Document {
   user: Types.ObjectId;
   assignedTo?: Types.ObjectId;
   location?: string;
+  dueDate?: Date;
+  escalated?: boolean;
+  internalNotes: {
+    author: Types.ObjectId;
+    note: string;
+    createdAt: Date;
+  }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +44,15 @@ const ComplaintSchema = new Schema<IComplaint>({
   user: { type: Schema.Types.ObjectId, ref: "User", required: true },
   assignedTo: { type: Schema.Types.ObjectId, ref: "User" },
   location: { type: String },
+  dueDate: { type: Date },
+  escalated: { type: Boolean, default: false },
+  internalNotes: [
+    {
+      author: { type: Schema.Types.ObjectId, ref: "User", required: true },
+      note: { type: String, required: true },
+      createdAt: { type: Date, default: Date.now },
+    },
+  ],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

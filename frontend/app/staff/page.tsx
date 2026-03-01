@@ -22,6 +22,8 @@ interface Complaint {
   category?: Category | string;
   assignedTo?: User | string;
   createdAt: string;
+   dueDate?: string;
+   escalated?: boolean;
 }
 
 export default function StaffDeskPage() {
@@ -31,6 +33,9 @@ export default function StaffDeskPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [viewScope, setViewScope] = useState<"assigned" | "all">("assigned");
+  const [metrics, setMetrics] = useState<
+    { overdue: number; upcoming: number; open: number } | null
+  >(null);
 
   useEffect(() => {
     hydrateFromStorage();
@@ -47,7 +52,17 @@ export default function StaffDeskPage() {
       .get<Category[]>("/api/categories", { headers })
       .then((r) => setCategories(r.data))
       .catch(() => {});
-  }, [accessToken]);
+
+    if (user && (user.role === "staff" || user.role === "admin")) {
+      api
+        .get<{ overdue: number; upcoming: number; open: number }>(
+          "/api/complaints/staff/metrics",
+          { headers },
+        )
+        .then((r) => setMetrics(r.data))
+        .catch(() => {});
+    }
+  }, [accessToken, user]);
 
   const filtered = useMemo(() => {
     return complaints.filter((c) => {
@@ -96,6 +111,14 @@ export default function StaffDeskPage() {
               {openAssigned}
             </div>
           </div>
+          {metrics && (
+            <div className="card-glass border-slate-700/70 px-3 py-2 text-right">
+              <div className="text-[11px] text-slate-400">Overdue (SLA)</div>
+              <div className="text-lg font-semibold text-ember">
+                {metrics.overdue}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px] text-slate-300">
