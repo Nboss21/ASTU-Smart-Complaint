@@ -28,9 +28,14 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigins = (process.env.CLIENT_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const io = new SocketIOServer(server, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN || "*",
+    origin: allowedOrigins.length > 0 ? allowedOrigins : "*",
     methods: ["GET", "POST"],
   },
 });
@@ -38,7 +43,18 @@ const io = new SocketIOServer(server, {
 initSocket(io);
 
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "*", credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 app.use(morgan("dev"));
 app.use(json({ limit: "10mb" }));
 app.use(urlencoded({ extended: true }));
