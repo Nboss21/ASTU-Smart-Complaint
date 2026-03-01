@@ -10,8 +10,8 @@ export async function extractTextFromBuffer(
 ): Promise<string | null> {
   try {
     if (mimeType === "application/pdf") {
-      const data = await pdfParse(buffer);
-      return data.text || null;
+      const data = await (pdfParse as any)(buffer);
+      return (data as any).text || null;
     }
 
     if (

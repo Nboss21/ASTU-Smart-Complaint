@@ -52,12 +52,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Hydrate auth state from localStorage once on mount
-    useAuthStore
-      .getState()
-      .hydrateFromStorage()
-      .finally(() => {
-        setAuthHydrated(true);
-      });
+    useAuthStore.getState().hydrateFromStorage();
+    setAuthHydrated(true);
   }, []);
 
   useEffect(() => {
