@@ -209,7 +209,7 @@ Create `.env` in the `backend` folder:
 ```env
 # 🍃 MongoDB Connection (Required)
 MONGODB_URI=mongodb://localhost:27017/astu_complaints
-# For production: mongodb+srv://username:password@cluster.mongodb.net/astu_complaints
+
 
 # 🔐 JWT Authentication (Required - Generate strong secrets)
 JWT_ACCESS_SECRET=your-super-secret-access-key-min-32-chars
